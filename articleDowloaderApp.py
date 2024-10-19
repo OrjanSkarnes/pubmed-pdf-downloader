@@ -13,36 +13,57 @@ class PubMedDownloaderApp:
         self.master = master
         self.asyncio_bridge = asyncio_bridge
         master.title("PubMed PDF Downloader")
-        master.geometry("460x300")
+        master.geometry("500x300")
+        master.resizable(False, False)
+
+        self.style = ttk.Style()
+        self.style.theme_use('clam')
+        self.style.configure('TButton', padding=6, relief="flat", background="#4CAF50", foreground="white")
+        self.style.map('TButton', background=[('active', '#45a049')])
+        self.style.configure('TProgressbar', thickness=20, borderwidth=2, height=20, background="#4CAF50")
+        self.style.configure('TEntry', padding=5)
+        self.style.configure('TLabel', padding=5)
+
+        main_frame = ttk.Frame(master, padding="20 20 20 20")
+        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
         # Query
-        ttk.Label(master, text="Search Query:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
-        self.query_entry = ttk.Entry(master, width=40)
-        self.query_entry.grid(row=0, column=1, padx=5, pady=5)
+        ttk.Label(main_frame, text="Search Query:").grid(row=0, column=0, sticky="w", pady=(0, 10))
+        self.query_entry = ttk.Entry(main_frame, width=50)
+        self.query_entry.grid(row=0, column=1, columnspan=2, sticky="we", pady=(0, 10))
 
         # Max Results
-        ttk.Label(master, text="Max Results:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
-        self.max_results_entry = ttk.Entry(master, width=10)
+        ttk.Label(main_frame, text="Max Results:").grid(row=1, column=0, sticky="w", pady=(0, 10))
+        self.max_results_entry = ttk.Entry(main_frame, width=10)
         self.max_results_entry.insert(0, "5")
-        self.max_results_entry.grid(row=1, column=1, sticky="w", padx=5, pady=5)
+        self.max_results_entry.grid(row=1, column=1, sticky="w", pady=(0, 10))
 
         # Download Folder
-        ttk.Label(master, text="Download Folder:").grid(row=3, column=0, sticky="w", padx=5, pady=5)
-        self.folder_entry = ttk.Entry(master, width=30)
-        self.folder_entry.grid(row=3, column=1, sticky="w", padx=5, pady=5)
-        ttk.Button(master, text="Browse", command=self.browse_folder).grid(row=3, column=2, padx=5, pady=5)
+        ttk.Label(main_frame, text="Download Folder:").grid(row=2, column=0, sticky="w", pady=(0, 10))
+        self.folder_entry = ttk.Entry(main_frame, width=40)
+        self.folder_entry.grid(row=2, column=1, sticky="we", pady=(0, 10))
+        ttk.Button(main_frame, text="Browse", command=self.browse_folder, style='TButton').grid(row=2, column=2, padx=(5, 0), pady=(0, 10))
 
         # Search Button
-        self.search_button = ttk.Button(master, text="Search and Download", command=self.start_search_and_download)
-        self.search_button.grid(row=4, column=1, pady=20)
+        self.search_button = ttk.Button(main_frame, text="Search and Download", command=self.start_search_and_download, style='TButton')
+        self.search_button.grid(row=3, column=0, columnspan=3, pady=(20, 10), sticky="we")
 
         # Progress Bar
-        self.progress = ttk.Progressbar(master, length=300, mode='indeterminate')
-        self.progress.grid(row=5, column=0, columnspan=3, padx=5, pady=5)
+        self.progress = ttk.Progressbar(main_frame, length=300, mode='indeterminate')
+        self.progress.grid(row=4, column=0, columnspan=3, sticky="we", pady=(10, 5))
 
         # Status Label
-        self.status_label = ttk.Label(master, text="")
-        self.status_label.grid(row=6, column=0, columnspan=3, padx=5, pady=5)
+        self.status_label = ttk.Label(main_frame, text="", wraplength=460, justify="center")
+        self.status_label.grid(row=5, column=0, columnspan=3, pady=(5, 10))
+
+        # Article beeing downloaded
+        self.article_label = ttk.Label(main_frame, text="", wraplength=460, justify="center")
+        self.article_label.grid(row=6, column=0, columnspan=3, pady=(5, 10))
+
+        # Configure grid
+        main_frame.columnconfigure(1, weight=1)
+        for i in range(6):
+            main_frame.rowconfigure(i, weight=1)
 
     def browse_folder(self):
         folder_selected = filedialog.askdirectory()
@@ -77,6 +98,7 @@ class PubMedDownloaderApp:
                 
                 for i, article in enumerate(articles, 1):
                     self.update_status(f"Downloading PDF {i}/{len(articles)}")
+                    self.article_label.config(text=article["MedlineCitation"]["Article"]["ArticleTitle"])
                     metadata = await download_pdf(session, article, download_folder)
                     # Create summary file
                     if metadata is not None:
@@ -97,19 +119,21 @@ class PubMedDownloaderApp:
         self.progress.stop()
         self.search_button.config(state='normal')
         self.status_label.config(text="")
+        self.article_label.config(text="")
 
     def update_status(self, message):
         self.master.after(0, lambda: self.status_label.config(text=message))
 
     def show_error(self, message):
         self.master.after(0, lambda: messagebox.showerror("Error", message))
+        self.reset_ui()
 
     def show_success(self, message):
         self.master.after(0, lambda: messagebox.showinfo("Success", message))
 
 def run_async_app():
     root = tk.Tk()
-    
+    root.configure(bg='#f0f0f0')
     # Set up asyncio event loop
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
