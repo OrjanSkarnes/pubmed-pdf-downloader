@@ -30,21 +30,33 @@ def create_safe_filename(metadata):
     filename = f"{first_author}_{year}_{title_part}.pdf"
     return re.sub(r'[^\w\.-]', '_', filename)
 
-def create_safe_foldername(query):
-    folder_name = re.sub(r'[^\w\-_\. ]', '_', query)
+def create_safe_foldername(keyword_query, author_query):
+    folder_name = re.sub(r'[^\w\-_\. ]', '_', keyword_query + " " + author_query)
     return folder_name.replace(' ', '_')
 
-async def search_and_fetch_pubmed(query, max_results=20, min_date="2010/01/01"):
-    handle = Entrez.esearch(db="pubmed", term=query, retmax=max_results, sort="relevance", mindate=min_date)
+async def search_and_fetch_pubmed(keyword_query, author_query, max_results=20, min_date="2010/01/01"):
+    query_parts = []
+    
+    if keyword_query:
+        query_parts.append(f"({keyword_query})")
+    
+    if author_query:
+        query_parts.append(f"({author_query}[Author])")
+    
+    if not query_parts:
+        raise ValueError("At least one of keyword_query or author_query must be provided")
+    
+    full_query = " AND ".join(query_parts)
+    handle = Entrez.esearch(db="pubmed", term=full_query, retmax=max_results, sort="relevance", mindate=min_date)
     record = Entrez.read(handle)
     ids = record["IdList"]
-    
+
     if not ids:
-        return []
+        return [], record["QueryTranslation"]
 
     handle = Entrez.efetch(db="pubmed", id=",".join(ids), retmode="xml")
     articles = Entrez.read(handle)["PubmedArticle"]
-    return articles
+    return articles, record["QueryTranslation"]
 
 def fetch_article_metadata(article):
     metadata = {

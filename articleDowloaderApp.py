@@ -3,8 +3,11 @@ from tkinter import ttk, filedialog, messagebox
 import os
 import asyncio
 import aiohttp
+from datetime import datetime
 from dotenv import load_dotenv
 from articledowloader import search_and_fetch_pubmed, create_safe_foldername, download_pdf
+import subprocess
+import platform
 
 load_dotenv()
 
@@ -13,56 +16,67 @@ class PubMedDownloaderApp:
         self.master = master
         self.asyncio_bridge = asyncio_bridge
         master.title("PubMed PDF Downloader")
-        master.geometry("500x300")
+        master.geometry("500x360")
         master.resizable(False, False)
+
+        bg_color = '#4CAF50'
+        master.configure(bg=bg_color)
 
         self.style = ttk.Style()
         self.style.theme_use('clam')
-        self.style.configure('TButton', padding=6, relief="flat", background="#4CAF50", foreground="white")
-        self.style.map('TButton', background=[('active', '#45a049')])
-        self.style.configure('TProgressbar', thickness=20, borderwidth=2, height=20, background="#4CAF50")
+        self.style.configure('TButton', padding=6, relief="flat", background=bg_color, foreground="white")
+        self.style.map('TButton', background=[('active', bg_color)])
+        self.style.configure('TProgressbar', thickness=20, borderwidth=2, height=20, background=bg_color)
         self.style.configure('TEntry', padding=5)
         self.style.configure('TLabel', padding=5)
 
-        main_frame = ttk.Frame(master, padding="20 20 20 20")
-        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+         # Main frame
+        main_frame = ttk.Frame(self.master, padding="40 20 40 20", style='TFrame')
+        main_frame.grid(column=0, row=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.master.columnconfigure(0, weight=1)
+        self.master.rowconfigure(0, weight=1)
 
         # Query
-        ttk.Label(main_frame, text="Search Query:").grid(row=0, column=0, sticky="w", pady=(0, 10))
-        self.query_entry = ttk.Entry(main_frame, width=50)
-        self.query_entry.grid(row=0, column=1, columnspan=2, sticky="we", pady=(0, 10))
+        ttk.Label(main_frame, text="Keyword:").grid(row=0, column=0, sticky="w", pady=(0, 10))
+        self.keyword_query_entry = ttk.Entry(main_frame, width=50)
+        self.keyword_query_entry.grid(row=0, column=1, columnspan=2, sticky="we", pady=(0, 10))
+
+        # Author
+        ttk.Label(main_frame, text="Author:").grid(row=1, column=0, sticky="w", pady=(0, 10))
+        self.author_query_entry = ttk.Entry(main_frame, width=50)
+        self.author_query_entry.grid(row=1, column=1, columnspan=2, sticky="we", pady=(0, 10))
 
         # Max Results
-        ttk.Label(main_frame, text="Max Results:").grid(row=1, column=0, sticky="w", pady=(0, 10))
+        ttk.Label(main_frame, text="Max Results:").grid(row=2, column=0, sticky="w", pady=(0, 10))
         self.max_results_entry = ttk.Entry(main_frame, width=10)
         self.max_results_entry.insert(0, "5")
-        self.max_results_entry.grid(row=1, column=1, sticky="w", pady=(0, 10))
+        self.max_results_entry.grid(row=2, column=1, sticky="w", pady=(0, 10))
 
         # Download Folder
-        ttk.Label(main_frame, text="Download Folder:").grid(row=2, column=0, sticky="w", pady=(0, 10))
+        ttk.Label(main_frame, text="Download Folder:").grid(row=3, column=0, sticky="w", pady=(0, 10))
         self.folder_entry = ttk.Entry(main_frame, width=40)
-        self.folder_entry.grid(row=2, column=1, sticky="we", pady=(0, 10))
-        ttk.Button(main_frame, text="Browse", command=self.browse_folder, style='TButton').grid(row=2, column=2, padx=(5, 0), pady=(0, 10))
+        self.folder_entry.grid(row=3, column=1, sticky="we", pady=(0, 10))
+        ttk.Button(main_frame, text="Browse", command=self.browse_folder, style='TButton').grid(row=3, column=2, padx=(5, 0), pady=(0, 10))
 
         # Search Button
         self.search_button = ttk.Button(main_frame, text="Search and Download", command=self.start_search_and_download, style='TButton')
-        self.search_button.grid(row=3, column=0, columnspan=3, pady=(20, 10), sticky="we")
+        self.search_button.grid(row=4, column=0, columnspan=3, pady=(20, 10), sticky="we")
 
         # Progress Bar
         self.progress = ttk.Progressbar(main_frame, length=300, mode='indeterminate')
-        self.progress.grid(row=4, column=0, columnspan=3, sticky="we", pady=(10, 5))
+        self.progress.grid(row=5, column=0, columnspan=3, sticky="we", pady=(10, 5))
 
         # Status Label
         self.status_label = ttk.Label(main_frame, text="", wraplength=460, justify="center")
-        self.status_label.grid(row=5, column=0, columnspan=3, pady=(5, 10))
+        self.status_label.grid(row=6, column=0, columnspan=3, pady=(5, 10))
 
         # Article beeing downloaded
         self.article_label = ttk.Label(main_frame, text="", wraplength=460, justify="center")
-        self.article_label.grid(row=6, column=0, columnspan=3, pady=(5, 10))
+        self.article_label.grid(row=7, column=0, columnspan=3, pady=(5, 10))
 
         # Configure grid
         main_frame.columnconfigure(1, weight=1)
-        for i in range(6):
+        for i in range(8):
             main_frame.rowconfigure(i, weight=1)
 
     def browse_folder(self):
@@ -77,18 +91,25 @@ class PubMedDownloaderApp:
         self.asyncio_bridge(self.search_and_download())
 
     async def search_and_download(self):
-        query = self.query_entry.get()
+        keyword_query = self.keyword_query_entry.get()
+        author_query = self.author_query_entry.get()
         max_results = int(self.max_results_entry.get())
-        download_folder = self.folder_entry.get() or create_safe_foldername(query)
+        download_folder = self.folder_entry.get() or create_safe_foldername(keyword_query, author_query)
+        query = ""
 
-        if not query:
+        if keyword_query:
+            query += f"Keyword: {keyword_query}"
+        if author_query:
+            query += f"\nAuthor: {author_query}"
+
+        if not keyword_query and not author_query:
             self.show_error("Please enter a search query.")
             return
 
         try:
             async with aiohttp.ClientSession() as session:
-                print("Searching PubMed...", query, max_results)
-                articles = await search_and_fetch_pubmed(query, max_results)
+                print(f"Searching PubMed for articles...")
+                articles, translated_query = await search_and_fetch_pubmed(keyword_query, author_query, max_results)
 
                 if not articles:
                     self.show_error("No articles found.")
@@ -96,20 +117,31 @@ class PubMedDownloaderApp:
 
                 os.makedirs(download_folder, exist_ok=True)
                 
-                for i, article in enumerate(articles, 1):
-                    self.update_status(f"Downloading PDF {i}/{len(articles)}")
-                    self.article_label.config(text=article["MedlineCitation"]["Article"]["ArticleTitle"])
-                    metadata = await download_pdf(session, article, download_folder)
-                    # Create summary file
-                    if metadata is not None:
-                        with open(os.path.join(download_folder, "summary.txt"), "a", encoding='utf-8') as summary_file:
-                            summary_file.write(f"Title: {metadata['title']}\n")
-                            summary_file.write(f"Authors: {', '.join(metadata['authors'])}\n")
-                            summary_file.write(f"Journal: {metadata['journal']}\n")
-                            summary_file.write(f"Date: {metadata['datetime'].strftime('%Y-%m-%d')}\n")
-                            summary_file.write(f"PMID: {metadata['pmid']}\n\n")
-            
+                summary_file_path = os.path.join(download_folder, "summary.txt")
+                with open(summary_file_path, "w", encoding='utf-8') as summary_file:
+                    summary_file.write(f"Search Query: {query}\n")
+                    summary_file.write(f"Translated Query: {translated_query}\n")
+                    summary_file.write(f"Search Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                    summary_file.write(f"Number of Results: {len(articles)}\n\n")
+                    summary_file.write("Articles:\n\n")
+
+                    for i, article in enumerate(articles, 1):
+                        self.update_status(f"Downloading PDF {i}/{len(articles)}")
+                        self.article_label.config(text=article["MedlineCitation"]["Article"]["ArticleTitle"])
+                        metadata = await download_pdf(session, article, download_folder)
+                        # Create summary file
+                        if metadata is not None:
+                            summary_file.write(f"{i}. Title: {metadata['title']}\n")
+                            summary_file.write(f"   Authors: {', '.join(metadata['authors'])}\n")
+                            summary_file.write(f"   Journal: {metadata['journal']}\n")
+                            summary_file.write(f"   Date: {metadata['datetime'].strftime('%Y-%m-%d')}\n")
+                            summary_file.write(f"   PMID: {metadata['pmid']}\n")
+                            summary_file.write(f"   DOI: {metadata.get('doi', 'N/A')}\n")
+                            summary_file.write(f"   URL: https://pubmed.ncbi.nlm.nih.gov/{metadata['pmid']}/\n\n")
+                            summary_file.write(f"   MLA Citation: {self.generate_mla_citation(metadata)}\n\n")
+
             self.show_success(f"Downloaded articles to {download_folder}")
+            self.open_summary_file(summary_file_path)
         except Exception as e:
             self.show_error(str(e))
         finally:
@@ -130,6 +162,28 @@ class PubMedDownloaderApp:
 
     def show_success(self, message):
         self.master.after(0, lambda: messagebox.showinfo("Success", message))
+
+    
+    def open_summary_file(self, file_path):
+        if platform.system() == 'Darwin':  # macOS
+            subprocess.call(('open', file_path))
+        elif platform.system() == 'Windows':  # Windows
+            os.startfile(file_path)
+        else:  # linux variants
+            subprocess.call(('xdg-open', file_path))
+
+    def generate_mla_citation(self, metadata):
+        authors = " and ".join(metadata['authors'][:3])  # MLA uses up to 3 authors
+        if len(metadata['authors']) > 3:
+            authors += ", et al"
+        
+        title = f'"{metadata["title"]}"'
+        journal = metadata['journal']
+        date = metadata['datetime'].strftime('%d %b. %Y')
+        url = f"https://pubmed.ncbi.nlm.nih.gov/{metadata['pmid']}/"
+        
+        citation = f"{authors}. {title}. {journal}, {date}, {url}. Accessed {datetime.now().strftime('%d %b. %Y')}."
+        return citation
 
 def run_async_app():
     root = tk.Tk()
