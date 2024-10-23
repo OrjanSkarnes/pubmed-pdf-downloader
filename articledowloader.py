@@ -59,9 +59,12 @@ async def search_and_fetch_pubmed(keyword_query, author_query, max_results=20, m
     return articles, record["QueryTranslation"]
 
 def fetch_article_metadata(article):
+    # Clean the title by removing HTML tags
+    title = re.sub('<[^<]+?>', '', article["MedlineCitation"]["Article"]["ArticleTitle"])
+    
     metadata = {
         "pmid": article["MedlineCitation"]["PMID"],
-        "title": article["MedlineCitation"]["Article"]["ArticleTitle"],
+        "title": title,
         "journal": article["MedlineCitation"]["Article"]["Journal"]["Title"],
         "date": article["MedlineCitation"]["Article"]["Journal"]["JournalIssue"]["PubDate"],
         "authors": [author.get("LastName", "") + " " + author.get("Initials", "") for author in article["MedlineCitation"]["Article"]["AuthorList"]],

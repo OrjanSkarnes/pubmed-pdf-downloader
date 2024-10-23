@@ -3,6 +3,7 @@ from tkinter import ttk, filedialog, messagebox
 import os
 import asyncio
 import aiohttp
+import re
 from datetime import datetime
 from dotenv import load_dotenv
 from articledowloader import search_and_fetch_pubmed, create_safe_foldername, download_pdf
@@ -16,7 +17,7 @@ class PubMedDownloaderApp:
         self.master = master
         self.asyncio_bridge = asyncio_bridge
         master.title("PubMed PDF Downloader")
-        master.geometry("500x360")
+        master.geometry("500x400")
         master.resizable(False, False)
 
         bg_color = '#4CAF50'
@@ -90,6 +91,32 @@ class PubMedDownloaderApp:
         self.status_label.config(text="Searching PubMed...")
         self.asyncio_bridge(self.search_and_download())
 
+    async def create_summary_file(self, summary_file_path, query, translated_query, articles, session, download_folder):
+        with open(summary_file_path, "w", encoding='utf-8') as summary_file:
+            summary_file.write(f"Search Query: {query}\n")
+            summary_file.write(f"Translated Query: {translated_query}\n")
+            summary_file.write(f"Search Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            summary_file.write(f"Number of Results: {len(articles)}\n\n")
+            summary_file.write("Articles:\n\n")
+
+            for i, article in enumerate(articles, 1):
+                self.update_status(f"Downloading PDF {i}/{len(articles)}")
+                title = re.sub('<[^<]+?>', '', article["MedlineCitation"]["Article"]["ArticleTitle"])
+                self.article_label.config(text=title)
+                metadata = await download_pdf(session, article, download_folder)
+                # Create summary file
+                if metadata is not None:
+                    summary_file.write(f"------------------------------------------------------------------\n\n")
+                    summary_file.write(f"Title: {metadata['title']}\n")
+                    summary_file.write(f"Authors: {', '.join(metadata['authors'])}\n")
+                    summary_file.write(f"Journal: {metadata['journal']}\n")
+                    summary_file.write(f"Date: {metadata['datetime'].strftime('%Y-%m-%d')}\n")
+                    summary_file.write(f"PMID: {metadata['pmid']}\n")
+                    summary_file.write(f"DOI: {metadata.get('doi', 'N/A')}\n")
+                    summary_file.write(f"URL: https://pubmed.ncbi.nlm.nih.gov/{metadata['pmid']}/\n\n")
+                    summary_file.write(f"MLA Citation: {self.generate_mla_citation(metadata)}\n\n")
+                    summary_file.write(f"Chicago Citation: {self.generate_chicago_citation(metadata)}\n\n\n")
+    
     async def search_and_download(self):
         keyword_query = self.keyword_query_entry.get()
         author_query = self.author_query_entry.get()
@@ -118,29 +145,8 @@ class PubMedDownloaderApp:
                 os.makedirs(download_folder, exist_ok=True)
                 
                 summary_file_path = os.path.join(download_folder, "summary.txt")
-                with open(summary_file_path, "w", encoding='utf-8') as summary_file:
-                    summary_file.write(f"Search Query: {query}\n")
-                    summary_file.write(f"Translated Query: {translated_query}\n")
-                    summary_file.write(f"Search Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                    summary_file.write(f"Number of Results: {len(articles)}\n\n")
-                    summary_file.write("Articles:\n\n")
-
-                    for i, article in enumerate(articles, 1):
-                        self.update_status(f"Downloading PDF {i}/{len(articles)}")
-                        self.article_label.config(text=article["MedlineCitation"]["Article"]["ArticleTitle"])
-                        metadata = await download_pdf(session, article, download_folder)
-                        # Create summary file
-                        if metadata is not None:
-                            summary_file.write(f"{i}. Title: {metadata['title']}\n")
-                            summary_file.write(f"   Authors: {', '.join(metadata['authors'])}\n")
-                            summary_file.write(f"   Journal: {metadata['journal']}\n")
-                            summary_file.write(f"   Date: {metadata['datetime'].strftime('%Y-%m-%d')}\n")
-                            summary_file.write(f"   PMID: {metadata['pmid']}\n")
-                            summary_file.write(f"   DOI: {metadata.get('doi', 'N/A')}\n")
-                            summary_file.write(f"   URL: https://pubmed.ncbi.nlm.nih.gov/{metadata['pmid']}/\n\n")
-                            summary_file.write(f"   MLA Citation: {self.generate_mla_citation(metadata)}\n\n")
-
-            self.show_success(f"Downloaded articles to {download_folder}")
+                await self.create_summary_file(summary_file_path, query, translated_query, articles, session, download_folder)
+                
             self.open_summary_file(summary_file_path)
         except Exception as e:
             self.show_error(str(e))
@@ -159,10 +165,6 @@ class PubMedDownloaderApp:
     def show_error(self, message):
         self.master.after(0, lambda: messagebox.showerror("Error", message))
         self.reset_ui()
-
-    def show_success(self, message):
-        self.master.after(0, lambda: messagebox.showinfo("Success", message))
-
     
     def open_summary_file(self, file_path):
         if platform.system() == 'Darwin':  # macOS
@@ -183,6 +185,43 @@ class PubMedDownloaderApp:
         url = f"https://pubmed.ncbi.nlm.nih.gov/{metadata['pmid']}/"
         
         citation = f"{authors}. {title}. {journal}, {date}, {url}. Accessed {datetime.now().strftime('%d %b. %Y')}."
+        return citation
+
+    def generate_chicago_citation(self, metadata):
+        # Format authors for Chicago style
+        authors = []
+        for i, author in enumerate(metadata['authors']):
+            if i == 0:
+                # First author: Last, First
+                names = author.split()
+                if len(names) > 1:
+                    authors.append(f"{names[-1]}, {' '.join(names[:-1])}")
+            else:
+                # Subsequent authors: First Last
+                authors.append(author)
+        
+        author_text = ""
+        if len(authors) == 1:
+            author_text = authors[0]
+        elif len(authors) == 2:
+            author_text = f"{authors[0]} and {authors[1]}"
+        elif len(authors) > 2:
+            author_text = f"{authors[0]} et al."
+        
+        # Format date
+        date = metadata['datetime'].strftime('%Y')
+        
+        # Create Chicago style citation
+        title = f'"{metadata["title"]}"'
+        journal = metadata['journal']
+        doi = metadata.get('doi', '')
+        
+        citation = f"{author_text}. {date}. {title}. {journal}. "
+        if doi:
+            citation += f"https://doi.org/{doi}"
+        else:
+            citation += f"https://pubmed.ncbi.nlm.nih.gov/{metadata['pmid']}/"
+        
         return citation
 
 def run_async_app():

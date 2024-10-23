@@ -1,2 +1,6 @@
 requests
 biopython
+aiohttp
+python-dotenv
+doi2pdf
+dotenv
